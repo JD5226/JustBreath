@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"name": "Lecture 2 Demo",
+			"path": "../Lecture 2 Demo"
+		},
+		{
+			"name": "Lecture 3 Demo",
+			"path": "../Lecture 3 Demo"
+		}
+	],
+	"settings": {}
+}
