@@ -264,10 +264,11 @@ int8_t stream_sensor_data_normal_mode(struct bme280_dev *dev)
     dev->delay_us(500'000, dev->intf_ptr); // measurement rate 0.5 sec
 
     rslt = bme280_get_sensor_data(BME280_ALL, &comp_data, dev);
-    curr_temp = (float)comp_data.temperature;
-    curr_humid = (float)comp_data.humidity;
-    curr_pres = (float)comp_data.pressure;
-    printf("%f, %f, %f \n", curr_temp, curr_pres, curr_humid);
+    print_sensor_data(&comp_data)
+    // curr_temp = (float)comp_data.temperature;
+    // curr_humid = (float)comp_data.humidity;
+    // curr_pres = (float)comp_data.pressure;
+    // printf("%f, %f, %f \n", curr_temp, curr_pres, curr_humid);
     // print_sensor_data(&comp_data);
     // humidity_collect(curr_humid);
     // breath_detection();
