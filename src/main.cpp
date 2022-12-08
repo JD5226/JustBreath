@@ -1,6 +1,10 @@
 #include <mbed.h>
 #include <bme280.h>
 
+#define SAMPLE_TIME (500'000)
+#define BUFFER_SIZE (20)
+#define THRESHOLD (2.5)
+
 I2C i2c(PC_9, PA_8);            // i2c(SDA, SCL)
 const int addr7bit = 0x77;      // 7-bit I2C address
 const int addr8bit = 0x77 << 1; // 8-bit I2C address
@@ -14,11 +18,11 @@ volatile float curr_pres = 0.0;
 volatile bool start = false;
 volatile bool alert = false;
 
-float buffer[20]; // circular buffer to collect data
-int i = -1;       // circular index
-int counter = 0;
-
-char buf[100];
+float sample[20];     // circular buffer to collect the sampling data
+int i = -1;           // circular buffer index
+int counter = 0;      // the counter keeps track of the time elapsed, incrementing every 0.5 sec
+float increase = 0.0; // the accumulated delta of an increasing period
+float delta = 0.0;    // the delta of current sample and last sample
 
 void user_delay_us(uint32_t period, void *intf_ptr)
 {
@@ -195,36 +199,103 @@ float find_max_diff(float arr[])
 {
   // find the max diff of given arr
   // O(n^2) -> not good!
-  float max_diff = arr[1] - arr[0];
+  float max_diff = 0.0;
+  if (arr[1] - arr[0] >= 0)
+    max_diff = arr[1] - arr[0];
+  else
+    max_diff = arr[0] - arr[1];
+
   for (int i = 0; i < 20; i++)
   {
     for (int j = i + 1; j < 20; j++)
     {
-      if (arr[j] - arr[i] > max_diff)
-        max_diff = arr[j] - arr[i];
+      float diff = 0.0;
+      if (arr[j] - arr[i] >= 0)
+        diff = arr[j] - arr[i];
+      else
+        diff = arr[i] - arr[j];
+
+      if (diff > max_diff)
+        max_diff = diff;
     }
   }
   return max_diff;
 }
 
-void breath_detection()
-{
-  float fluctuation = find_max_diff(buffer);
-  if (fluctuation <= 5.0)
-    counter++;
-  else
-    counter = 0;
+/* Detection Algorithm */
 
-  if (counter >= 20)
-    alert = true;
+// inhale: a decrease of humidity (-1.0)
+// exhale: an increase of humidity (+2.5 ~ +4.0)
+// stop: a contiguous decrease back to average or a constant average with slight flutuactions
+
+// keep counting the time until there is an increase of >= 2.5
+// (omitting every incease < 2.5, because it might be just some slight fluctations)
+// restart counting whenever there is a decrease (no breathing condition)
+
+/* timer and alert trigger */
+void time_ticking()
+{
+  if (++counter >= 20) // increment the counter and see if greater than 20
+  {
+    // 20 means 10 seconds elapsed
+    printf("stop breathing for 10s! \n");
+    counter = 0;
+    start = false;
+  }
 }
 
+/* determine whether it is increasing */
+bool on_increase(float data[])
+{
+  int j; // the index of the previous sample
+  if (i > 0)
+    j = i - 1;
+  else
+    j = 20 - 1;
+  delta = data[i] - data[j];  // delta: current - previous
+  return (data[i] > data[j]); // if current > previous, means increasing
+}
+
+/* find the exhalation, if there is an exhalation then reset the timer */
+void breath_detection()
+{
+  /* fluctuation method -> not work!
+  // float fluctuation = find_max_diff(buffer);
+  // if (fluctuation <= 5.0)
+  //   counter++;
+  // else
+  //   counter = 0;
+
+  // if (counter >= 20)
+  // {
+  //   // alert = true;
+  //   counter = 0;
+  // }
+  */
+
+  if (on_increase(sample)) // when increasing
+  {
+    increase += delta; // calculate the total delta
+    if (increase >= 2.5)
+    {
+      // when the total increasing comes to 2.5, means it is exhaling
+      printf("-> exhaling...");
+      counter = 0; // reset the counting because the person is breathing
+    }
+  }
+  else
+    increase = 0.0; // reset because it is decreasing
+
+  printf("\n");
+}
+
+/* put humidity data into a circular buffer */
 void humidity_collect(float data)
 {
   if (++i >= 20)
-    i = 0; // back to 0 when len(buffer)
+    i = 0; // back to 0 when reaching the end -> circular
 
-  buffer[i] = data;
+  sample[i] = data;
 }
 
 void print_sensor_data(struct bme280_data *comp_data)
@@ -257,21 +328,23 @@ int8_t stream_sensor_data_normal_mode(struct bme280_dev *dev)
   rslt = bme280_set_sensor_settings(settings_sel, dev);
   rslt = bme280_set_sensor_mode(BME280_NORMAL_MODE, dev);
 
-  printf("Temperature, Pressure, Humidity\r\n");
+  // printf("Temperature, Pressure, Humidity\r\n");
   while (start && !alert)
   {
     /* Delay while the sensor completes a measurement */
     dev->delay_us(500'000, dev->intf_ptr); // measurement rate 0.5 sec
 
     rslt = bme280_get_sensor_data(BME280_ALL, &comp_data, dev);
-    print_sensor_data(&comp_data)
-    // curr_temp = (float)comp_data.temperature;
-    // curr_humid = (float)comp_data.humidity;
-    // curr_pres = (float)comp_data.pressure;
-    // printf("%f, %f, %f \n", curr_temp, curr_pres, curr_humid);
     // print_sensor_data(&comp_data);
-    // humidity_collect(curr_humid);
-    // breath_detection();
+
+    curr_temp = (float)comp_data.temperature;
+    curr_humid = (float)comp_data.humidity;
+    curr_pres = (float)comp_data.pressure;
+    printf("time: %i |  humidity: %i  | temperature: %i  | pressure: %i ", counter, (int)curr_humid, (int)curr_temp, (int)curr_pres);
+
+    humidity_collect(curr_humid);
+    breath_detection();
+    time_ticking();
   }
 
   return rslt;
@@ -319,7 +392,15 @@ int main()
   {
     // put your main code here, to run repeatedly:
     stream_sensor_data_normal_mode(&dev);
-    while (alert)
-      ;
+
+    // auto-restart after every 10s
+    // if breathing, start would never be set false
+    while (!start)
+    {
+      printf("* end of a cycle * \n");
+      printf("restart...\n");
+      thread_sleep_for(3000);
+      start = true;
+    }
   }
 }
