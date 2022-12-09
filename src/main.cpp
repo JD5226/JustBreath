@@ -1,15 +1,17 @@
 #include <mbed.h>
 #include <bme280.h>
 
+// System Parameters
 #define SAMPLE_TIME (500'000)
 #define BUFFER_SIZE (20)
 #define THRESHOLD (2.5)
 
+/* Digital Interface */
+// I2C -> not work, deprecated later!
 I2C i2c(PC_9, PA_8);            // i2c(SDA, SCL)
 const int addr7bit = 0x77;      // 7-bit I2C address
 const int addr8bit = 0x77 << 1; // 8-bit I2C address
 
-/* Digital Interface */
 // SPI wiring instruction:
 // Connect Vin to 3V
 // Connect GND to GND
@@ -19,6 +21,13 @@ const int addr8bit = 0x77 << 1; // 8-bit I2C address
 // Connect CS to PA4
 SPI spi(PA_7, PA_6, PA_5); // mosi, miso, sclk
 DigitalOut cs(PA_4);
+
+/* System State Codes */
+// 0 - initialize
+// 1 - running
+// 2 - stop
+// typical cycle: power on -> 0 -> 1 -> if alert -> 2 -> reset -> 1
+// under construction...
 
 /* Global Variables and Status Flags*/
 volatile float curr_temp = 0.0;
@@ -34,6 +43,9 @@ int counter = 0;      // the counter keeps track of the time elapsed, incrementi
 float increase = 0.0; // the accumulated delta of an increasing period
 float delta = 0.0;    // the delta of current sample and last sample
 
+/* Variables for GUI */
+// put your variables here...
+
 void user_delay_us(uint32_t period, void *intf_ptr)
 {
   /*
@@ -44,6 +56,7 @@ void user_delay_us(uint32_t period, void *intf_ptr)
   wait_us(period);
 }
 
+/* I2C read and write functions */
 int8_t user_i2c_read(uint8_t reg_addr, uint8_t *reg_data, uint32_t len, void *intf_ptr)
 {
   int8_t rslt = 0; /* Return 0 for Success, non-zero for failure */
@@ -120,8 +133,7 @@ int8_t user_i2c_write(uint8_t reg_addr, const uint8_t *reg_data, uint32_t len, v
   return rslt;
 }
 
-/* SPI read and write functions*/
-
+/* SPI read and write functions */
 int8_t user_spi_read(uint8_t reg_addr, uint8_t *reg_data, uint32_t len, void *intf_ptr)
 {
   int8_t rslt = 0; /* Return 0 for Success, non-zero for failure */
@@ -207,6 +219,7 @@ int8_t user_spi_write(uint8_t reg_addr, const uint8_t *reg_data, uint32_t len, v
   return rslt;
 }
 
+/* find max difference among values in array -> deprecated later! */
 float find_max_diff(float arr[])
 {
   // find the max diff of given arr
@@ -234,17 +247,10 @@ float find_max_diff(float arr[])
   return max_diff;
 }
 
-/* Detection Algorithm */
-
-// inhale: a decrease of humidity (-1.0)
-// exhale: an increase of humidity (+2.5 ~ +4.0)
-// stop: a contiguous decrease back to average or a constant average with slight flutuactions
-
-// keep counting the time until there is an increase of >= 2.5
-// (omitting every incease < 2.5, because it might be just some slight fluctations)
-// restart counting whenever there is a decrease (no breathing condition)
-
 /* timer and alert trigger */
+// Note:  this timer constantly runs in the background
+//        for testing purpose, now we cycle the sytem for 10s sampling and wait for 3s to restart
+//        if you want the system to act in different way, feel free to implement other timer functions!
 void time_ticking()
 {
   if (++counter >= 20) // increment the counter and see if greater than 20
@@ -253,7 +259,28 @@ void time_ticking()
     printf("stop breathing for 10s! \n");
     counter = 0;
     start = false;
+    // alert = true;
   }
+}
+
+/* Detection Algorithm */
+
+// 1 - Incresing Detection Method:
+// inhale: a decrease of humidity (-1.0)
+// exhale: an increase of humidity (+2.5 ~ +4.0)
+// stop: a contiguous decrease back to average or a constant average with slight flutuactions
+
+// keep counting the time until there is an increase of >= 2.5
+// (omitting every incease < 2.5, because it might be just some slight fluctations)
+// restart counting whenever there is a decrease (no breathing condition)
+
+// 2 - Decreasing and No-Changing Detection Method:
+// put your description here
+
+/* determine the initial value of humidity */
+float calc_init_val(float data[])
+{
+  // put your code here...
 }
 
 /* determine whether the value is increasing */
@@ -268,10 +295,16 @@ bool on_increase(float data[])
   return (data[i] > data[j]); // if (current > previous) equals true, means increasing
 }
 
-/* find the exhalation, if there is an exhalation then reset the timer */
+/* determine whether the value is decreasing */
+bool on_decrease(float data[])
+{
+  // put your code here...
+}
+
+/* 1- find the exhalation, if there is an exhalation then reset the timer */
 void breath_detection()
 {
-  /* fluctuation method -> not work!
+  /* fluctuation method -> not work, deprecated!
   // float fluctuation = find_max_diff(buffer);
   // if (fluctuation <= 5.0)
   //   counter++;
@@ -301,6 +334,14 @@ void breath_detection()
   printf("\n");
 }
 
+/* 2- find the non-breathing period, if so, count the timer unitl 10 sec to trigger alert */
+void no_breath_detection()
+{
+  // put your code here...
+
+  printf("\n");
+}
+
 /* put humidity data into a circular buffer */
 void humidity_collect(float data)
 {
@@ -322,6 +363,10 @@ void print_sensor_data(struct bme280_data *comp_data)
 #endif
 }
 
+/* GUI */
+// put your code here...
+
+/* stream the data read from sensor */
 int8_t stream_sensor_data_normal_mode(struct bme280_dev *dev)
 {
   int8_t rslt;
@@ -344,6 +389,9 @@ int8_t stream_sensor_data_normal_mode(struct bme280_dev *dev)
   rslt = bme280_set_sensor_mode(BME280_NORMAL_MODE, dev);
 
   // printf("Temperature, Pressure, Humidity\r\n");
+
+  /* the measurement cycle in normal mode */
+  // put the data processing and detection algorithm functions in this loop
   while (start && !alert)
   {
     /* Delay while the sensor completes a measurement */
@@ -359,14 +407,15 @@ int8_t stream_sensor_data_normal_mode(struct bme280_dev *dev)
     // printf("time: %i |  humidity: %0.2f  | temperature: %0.2f  | pressure: %0.2f ", counter, curr_humid, curr_temp, curr_pres);
 
     humidity_collect(curr_humid);
-    breath_detection();
+    // breath_detection();
+    no_breath_detection();
     time_ticking();
   }
 
   return rslt;
 }
 
-/* SPI initialize */
+/* SPI setup */
 void bme280_dev_setup(struct bme280_dev *dev)
 {
   uint8_t dev_addr = 0; // Sensor_0 interface over SPI with native chip select line
@@ -383,19 +432,6 @@ int main()
   // put your setup code here, to run once:
   struct bme280_dev dev;
 
-  /* I2C initialize
-  int8_t rslt = BME280_OK;
-  uint8_t dev_addr = BME280_I2C_ADDR_SEC;
-
-  dev.intf_ptr = &dev_addr;
-  dev.intf = BME280_I2C_INTF;
-  dev.read = user_i2c_read;
-  dev.write = user_i2c_write;
-  dev.delay_us = user_delay_ms;
-
-  rslt = bme280_init(&dev);
-  */
-
   bme280_dev_setup(&dev);
 
   if (bme280_init(&dev) == BME280_OK)
@@ -404,19 +440,28 @@ int main()
     start = true;
   }
 
+  /* the outer loop is for system state cycle */
   while (1)
   {
-    // put your main code here, to run repeatedly:
+    /* 0- initialize */
+    // run once, use normal mode to collect samples and find init_val
+    // if(init_val==0)
+    //   init_val = ...;
+
+    /* 1- running */
     stream_sensor_data_normal_mode(&dev);
 
-    // auto-restart after every 10s
-    // if breathing, start would never be set false
-    while (!start)
+    /* 2- stop */
+    // the inner loop is for "alert" or "periodically restart" purpose
+    if (!start || alert)
     {
       printf("* end of a cycle * \n");
+
+      // Note: auto-restart for testing purpose
       printf("restart...\n");
       thread_sleep_for(3000);
       start = true;
+      alert = false;
     }
   }
 }
