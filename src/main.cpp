@@ -9,15 +9,25 @@ I2C i2c(PC_9, PA_8);            // i2c(SDA, SCL)
 const int addr7bit = 0x77;      // 7-bit I2C address
 const int addr8bit = 0x77 << 1; // 8-bit I2C address
 
+/* Digital Interface */
+// SPI wiring instruction:
+// Connect Vin to 3V
+// Connect GND to GND
+// Connect SCK to PA5
+// Connect SDO to PA6
+// Connect SDI to PA7
+// Connect CS to PA4
 SPI spi(PA_7, PA_6, PA_5); // mosi, miso, sclk
 DigitalOut cs(PA_4);
 
+/* Global Variables and Status Flags*/
 volatile float curr_temp = 0.0;
 volatile float curr_humid = 0.0;
 volatile float curr_pres = 0.0;
 volatile bool start = false;
 volatile bool alert = false;
 
+/* Variables for Data Processing */
 float sample[20];     // circular buffer to collect the sampling data
 int i = -1;           // circular buffer index
 int counter = 0;      // the counter keeps track of the time elapsed, incrementing every 0.5 sec
@@ -109,6 +119,8 @@ int8_t user_i2c_write(uint8_t reg_addr, const uint8_t *reg_data, uint32_t len, v
 
   return rslt;
 }
+
+/* SPI read and write functions*/
 
 int8_t user_spi_read(uint8_t reg_addr, uint8_t *reg_data, uint32_t len, void *intf_ptr)
 {
@@ -237,14 +249,14 @@ void time_ticking()
 {
   if (++counter >= 20) // increment the counter and see if greater than 20
   {
-    // 20 means 10 seconds elapsed
+    // count to 20 means 10 seconds elapsed (under SAMPLE_TIME=0.5s)
     printf("stop breathing for 10s! \n");
     counter = 0;
     start = false;
   }
 }
 
-/* determine whether it is increasing */
+/* determine whether the value is increasing */
 bool on_increase(float data[])
 {
   int j; // the index of the previous sample
@@ -253,7 +265,7 @@ bool on_increase(float data[])
   else
     j = 20 - 1;
   delta = data[i] - data[j];  // delta: current - previous
-  return (data[i] > data[j]); // if current > previous, means increasing
+  return (data[i] > data[j]); // if (current > previous) equals true, means increasing
 }
 
 /* find the exhalation, if there is an exhalation then reset the timer */
@@ -275,12 +287,12 @@ void breath_detection()
 
   if (on_increase(sample)) // when increasing
   {
-    increase += delta; // calculate the total delta
+    increase += delta; // calculate the summation of delta
     if (increase >= 2.5)
     {
-      // when the total increasing comes to 2.5, means it is exhaling
+      // when the total increase comes to THRESHOLD, means the person is exhaling
       printf("-> exhaling...");
-      counter = 0; // reset the counting because the person is breathing
+      counter = 0; // recount from 0 because the person is breathing at this moment
     }
   }
   else
@@ -295,8 +307,11 @@ void humidity_collect(float data)
   if (++i >= 20)
     i = 0; // back to 0 when reaching the end -> circular
 
-  sample[i] = data;
+  sample[i] = data; // store the data to the buffer
 }
+
+/* BME280 data streaming and printing functions */
+// for further details, refer to https://github.com/BoschSensortec/BME280_driver
 
 void print_sensor_data(struct bme280_data *comp_data)
 {
@@ -341,6 +356,7 @@ int8_t stream_sensor_data_normal_mode(struct bme280_dev *dev)
     curr_humid = (float)comp_data.humidity;
     curr_pres = (float)comp_data.pressure;
     printf("time: %i |  humidity: %i  | temperature: %i  | pressure: %i ", counter, (int)curr_humid, (int)curr_temp, (int)curr_pres);
+    // printf("time: %i |  humidity: %0.2f  | temperature: %0.2f  | pressure: %0.2f ", counter, curr_humid, curr_temp, curr_pres);
 
     humidity_collect(curr_humid);
     breath_detection();
