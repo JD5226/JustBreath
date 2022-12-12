@@ -1,16 +1,25 @@
 #include <mbed.h>
 #include <bme280.h>
+#include "drivers/LCD_DISCO_F429ZI.h"
 
 // System Parameters
 #define SAMPLE_TIME (500'000)
 #define BUFFER_SIZE (20)
 #define THRESHOLD (2.5)
 
+// UI System Parameters
+#define BACKGROUND 1
+#define FOREGROUND 0
+#define GRAPH_PADDING 5
+
 /* Digital Interface */
 // I2C -> not work, deprecated later!
 I2C i2c(PC_9, PA_8);            // i2c(SDA, SCL)
 const int addr7bit = 0x77;      // 7-bit I2C address
 const int addr8bit = 0x77 << 1; // 8-bit I2C address
+
+LCD_DISCO_F429ZI lcd;
+char display_buf[3][60];
 
 // SPI wiring instruction:
 // Connect Vin to 3V
@@ -36,6 +45,7 @@ volatile float curr_pres = 0.0;
 volatile bool start = false;
 volatile bool alert = false;
 
+
 /* Variables for Data Processing */
 float sample[20];     // circular buffer to collect the sampling data
 int i = -1;           // circular buffer index
@@ -47,6 +57,64 @@ int icount = 0;
 
 /* Variables for GUI */
 // put your variables here...
+volatile uint8_t temp = 0;
+volatile uint8_t moi = 0;
+volatile uint8_t pres = 0;
+
+void setupScreen(){
+    //background
+    lcd.SelectLayer(BACKGROUND);
+    lcd.Clear(LCD_COLOR_BLACK);
+    lcd.SetBackColor(LCD_COLOR_BLACK);
+    lcd.SetTextColor(LCD_COLOR_YELLOW);
+    lcd.SetLayerVisible(BACKGROUND,ENABLE);
+    lcd.SetTransparency(BACKGROUND,0x7Fu);
+    //forground
+    lcd.SelectLayer(FOREGROUND);
+    lcd.Clear(LCD_COLOR_BLACK);
+    lcd.SetBackColor(LCD_COLOR_BLACK);
+    lcd.SetTextColor(LCD_COLOR_LIGHTGREEN);
+}
+
+void updateValue(uint8_t newTemp, uint8_t newMoi, uint8_t newPres){
+    temp = newTemp;
+    moi = newMoi;
+    pres = newPres;
+}
+
+void displayValue(uint8_t temp, uint8_t moi, uint8_t pres, bool warn, bool initializing){
+    //if initializing
+    if (initializing){
+        snprintf(display_buf[0],60,"Initializing...");
+        lcd.SelectLayer(BACKGROUND);
+        lcd.Clear(LCD_COLOR_BLACK);
+        lcd.DisplayStringAt(0, LINE(10), (uint8_t *)display_buf[0], CENTER_MODE);
+        return;
+    }
+
+    //if warnning, set screen to red
+    if(warn){
+        lcd.SelectLayer(BACKGROUND);
+        lcd.Clear(LCD_COLOR_RED);
+        lcd.SetBackColor(LCD_COLOR_RED);
+    }else{
+        lcd.SelectLayer(BACKGROUND);
+        lcd.Clear(LCD_COLOR_BLACK);
+        lcd.SetBackColor(LCD_COLOR_BLACK);
+    }
+    //update value in buffer
+    snprintf(display_buf[0],60,"Temperature: %d ",temp);
+    snprintf(display_buf[1],60,"Moisture: %d ",moi);
+    snprintf(display_buf[2],60,"Pressure: %d ",lcd.GetXSize());
+    lcd.SelectLayer(FOREGROUND);
+    //display
+    lcd.DisplayStringAt(0, LINE(1), (uint8_t *)display_buf[0], LEFT_MODE);
+    lcd.DisplayStringAt(0, LINE(2), (uint8_t *)display_buf[1], LEFT_MODE);
+    lcd.DisplayStringAt(0, LINE(3), (uint8_t *)display_buf[2], LEFT_MODE);
+}
+
+
+
 
 void user_delay_us(uint32_t period, void *intf_ptr)
 {
@@ -357,7 +425,7 @@ void breath_detection()
 void no_breath_detection(float avg)
 {
   // put your code here...
-  if (on_decrease(sample) || (sample[i] < (avg + 2) && sample[i] > (avg - 2)))
+  if (on_decrease(sample) || (sample[i] < (avg + 3) && sample[i] > (avg - 3)))
       printf("-> not breathing...");
   else
     counter = 0; // reset because it is breathing
@@ -425,13 +493,15 @@ int8_t stream_sensor_data_normal_mode(struct bme280_dev *dev)
     curr_temp = (float)comp_data.temperature;
     curr_humid = (float)comp_data.humidity;
     curr_pres = (float)comp_data.pressure;
-
     // printf("time: %i |  humidity: %i  | temperature: %i  | pressure: %i ", counter, (int)curr_humid, (int)curr_temp, (int)curr_pres);
     // printf("time: %i |  humidity: %0.2f  | temperature: %0.2f  | pressure: %0.2f ", counter, curr_humid, curr_temp, curr_pres);
 
     humidity_collect(curr_humid);
     icount++;
     if (icount < 10){
+
+      displayValue(0,0,0,false,true);
+      thread_sleep_for(1000);
       continue;
     }
     else if (icount == 10){
@@ -440,6 +510,8 @@ int8_t stream_sensor_data_normal_mode(struct bme280_dev *dev)
       
     else{
       printf("time: %i |  humidity: %i  | temperature: %i  | pressure: %i ", counter, (int)curr_humid, (int)curr_temp, (int)curr_pres);
+      updateValue((int)curr_temp, (int)curr_humid, (int)curr_pres);
+      displayValue((int)curr_temp, (int)curr_humid, (int)curr_pres, false, false);
       no_breath_detection(IV);
       time_ticking();
     }
@@ -469,10 +541,14 @@ int main()
 
   bme280_dev_setup(&dev);
 
+  int initial = 0;
+
   if (bme280_init(&dev) == BME280_OK)
   {
     printf("BME280 initialize OK. \n");
     start = true;
+
+    setupScreen();
   }
 
   /* the outer loop is for system state cycle */
@@ -491,6 +567,7 @@ int main()
     if (!start || alert)
     {
       printf("* end of a cycle * \n");
+      displayValue((int)curr_temp, (int)curr_humid, (int)curr_pres, true, false);
 
       // Note: auto-restart for testing purpose
       printf("restart...\n");
