@@ -42,6 +42,8 @@ int i = -1;           // circular buffer index
 int counter = 0;      // the counter keeps track of the time elapsed, incrementing every 0.5 sec
 float increase = 0.0; // the accumulated delta of an increasing period
 float delta = 0.0;    // the delta of current sample and last sample
+float IV = 0.0;
+int icount = 0;
 
 /* Variables for GUI */
 // put your variables here...
@@ -278,9 +280,17 @@ void time_ticking()
 // put your description here
 
 /* determine the initial value of humidity */
-float calc_init_val(float data[])
+float initialize(float data[])
 {
-  // put your code here...
+  float sum = 0.0; 
+  float avg = 0.0;
+  for(int i = 0; i < 10; i++){
+    sum += data[i];
+    printf("Initializing.... \n");
+  }
+  avg = sum / 10;
+  printf("Initialization Finialized. Initial Value: %d \n", (int)avg);
+  return avg;
 }
 
 /* determine whether the value is increasing */
@@ -296,9 +306,18 @@ bool on_increase(float data[])
 }
 
 /* determine whether the value is decreasing */
-bool on_decrease(float data[])
-{
-  // put your code here...
+bool on_decrease(float data[]){
+  int curr;
+  int prev;
+  if (i > 0){
+    curr = data[i];
+    prev = data[i - 1];
+  }
+  else{
+    curr = data[i];
+    prev = data[-1];
+  }
+  return curr < prev;
 }
 
 /* 1- find the exhalation, if there is an exhalation then reset the timer */
@@ -335,10 +354,13 @@ void breath_detection()
 }
 
 /* 2- find the non-breathing period, if so, count the timer unitl 10 sec to trigger alert */
-void no_breath_detection()
+void no_breath_detection(float avg)
 {
   // put your code here...
-
+  if (on_decrease(sample) || (sample[i] < (avg + 2) && sample[i] > (avg - 2)))
+      printf("-> not breathing...");
+  else
+    counter = 0; // reset because it is breathing
   printf("\n");
 }
 
@@ -403,14 +425,27 @@ int8_t stream_sensor_data_normal_mode(struct bme280_dev *dev)
     curr_temp = (float)comp_data.temperature;
     curr_humid = (float)comp_data.humidity;
     curr_pres = (float)comp_data.pressure;
-    printf("time: %i |  humidity: %i  | temperature: %i  | pressure: %i ", counter, (int)curr_humid, (int)curr_temp, (int)curr_pres);
+
+    // printf("time: %i |  humidity: %i  | temperature: %i  | pressure: %i ", counter, (int)curr_humid, (int)curr_temp, (int)curr_pres);
     // printf("time: %i |  humidity: %0.2f  | temperature: %0.2f  | pressure: %0.2f ", counter, curr_humid, curr_temp, curr_pres);
 
     humidity_collect(curr_humid);
-    // breath_detection();
-    no_breath_detection();
-    time_ticking();
+    icount++;
+    if (icount < 10){
+      continue;
+    }
+    else if (icount == 10){
+      IV = initialize(sample);
+    }
+      
+    else{
+      printf("time: %i |  humidity: %i  | temperature: %i  | pressure: %i ", counter, (int)curr_humid, (int)curr_temp, (int)curr_pres);
+      no_breath_detection(IV);
+      time_ticking();
+    }
+    
   }
+  icount = 0;
 
   return rslt;
 }
