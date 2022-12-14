@@ -5,22 +5,17 @@
 // System Parameters
 #define SAMPLE_TIME (500'000)
 #define BUFFER_SIZE (20)
-#define THRESHOLD (2.5)
 
 // UI System Parameters
 #define BACKGROUND 1
 #define FOREGROUND 0
 #define GRAPH_PADDING 5
 
-/* Digital Interface */
-// I2C -> not work, deprecated later!
-I2C i2c(PC_9, PA_8);            // i2c(SDA, SCL)
-const int addr7bit = 0x77;      // 7-bit I2C address
-const int addr8bit = 0x77 << 1; // 8-bit I2C address
 
 LCD_DISCO_F429ZI lcd;
 char display_buf[3][60];
 
+/* Digital Interface */
 // SPI wiring instruction:
 // Connect Vin to 3V
 // Connect GND to GND
@@ -76,11 +71,6 @@ void setupScreen(){
     lcd.SetTextColor(LCD_COLOR_LIGHTGREEN);
 }
 
-void updateValue(uint8_t newTemp, uint8_t newMoi, uint8_t newPres){
-    temp = newTemp;
-    moi = newMoi;
-    pres = newPres;
-}
 
 void displayValue(uint8_t temp, uint8_t moi, uint8_t pres, bool warn, bool initializing){
     //if initializing
@@ -94,22 +84,24 @@ void displayValue(uint8_t temp, uint8_t moi, uint8_t pres, bool warn, bool initi
 
     //if warnning, set screen to red
     if(warn){
+        snprintf(display_buf[0],60,"SIDS Alert !");
         lcd.SelectLayer(BACKGROUND);
         lcd.Clear(LCD_COLOR_RED);
         lcd.SetBackColor(LCD_COLOR_RED);
+        lcd.DisplayStringAt(0, LINE(10), (uint8_t *)display_buf[0], CENTER_MODE);
     }else{
         lcd.SelectLayer(BACKGROUND);
         lcd.Clear(LCD_COLOR_BLACK);
         lcd.SetBackColor(LCD_COLOR_BLACK);
     }
     //update value in buffer
+    snprintf(display_buf[1],60,"Humidity: %d ",moi);
     snprintf(display_buf[0],60,"Temperature: %d ",temp);
-    snprintf(display_buf[1],60,"Moisture: %d ",moi);
     snprintf(display_buf[2],60,"Pressure: %d ",lcd.GetXSize());
     lcd.SelectLayer(FOREGROUND);
     //display
-    lcd.DisplayStringAt(0, LINE(1), (uint8_t *)display_buf[0], LEFT_MODE);
-    lcd.DisplayStringAt(0, LINE(2), (uint8_t *)display_buf[1], LEFT_MODE);
+    lcd.DisplayStringAt(0, LINE(2), (uint8_t *)display_buf[0], LEFT_MODE);
+    lcd.DisplayStringAt(0, LINE(1), (uint8_t *)display_buf[1], LEFT_MODE);
     lcd.DisplayStringAt(0, LINE(3), (uint8_t *)display_buf[2], LEFT_MODE);
 }
 
@@ -122,86 +114,9 @@ void user_delay_us(uint32_t period, void *intf_ptr)
    * Return control or wait,
    * for a period amount of milliseconds
    */
-  // thread_sleep_for(period);
   wait_us(period);
 }
 
-/* I2C read and write functions */
-int8_t user_i2c_read(uint8_t reg_addr, uint8_t *reg_data, uint32_t len, void *intf_ptr)
-{
-  int8_t rslt = 0; /* Return 0 for Success, non-zero for failure */
-  char data[len];
-
-  /*
-   * The parameter intf_ptr can be used as a variable to store the I2C address of the device
-   */
-
-  /*
-   * Data on the bus should be like
-   * |------------+---------------------|
-   * | I2C action | Data                |
-   * |------------+---------------------|
-   * | Start      | -                   |
-   * | Write      | (reg_addr)          |
-   * | Stop       | -                   |
-   * | Start      | -                   |
-   * | Read       | (reg_data[0])       |
-   * | Read       | (....)              |
-   * | Read       | (reg_data[len - 1]) |
-   * | Stop       | -                   |
-   * |------------+---------------------|
-   */
-  i2c.start();
-  data[0] = reg_addr;
-  printf("i2c write: %i \n", i2c.write(addr8bit, data, len));
-  i2c.stop();
-  i2c.start();
-  printf("i2c read: %i \n", i2c.read(addr8bit, data, len));
-  i2c.stop();
-  for (uint32_t i = 0; i < len; i++)
-  {
-    reg_data[i] = data[i];
-  }
-
-  // *reg_data = BME280_CHIP_ID;
-
-  return rslt;
-}
-
-int8_t user_i2c_write(uint8_t reg_addr, const uint8_t *reg_data, uint32_t len, void *intf_ptr)
-{
-  int8_t rslt = 0; /* Return 0 for Success, non-zero for failure */
-  char data[len];
-
-  /*
-   * The parameter intf_ptr can be used as a variable to store the I2C address of the device
-   */
-
-  /*
-   * Data on the bus should be like
-   * |------------+---------------------|
-   * | I2C action | Data                |
-   * |------------+---------------------|
-   * | Start      | -                   |
-   * | Write      | (reg_addr)          |
-   * | Write      | (reg_data[0])       |
-   * | Write      | (....)              |
-   * | Write      | (reg_data[len - 1]) |
-   * | Stop       | -                   |
-   * |------------+---------------------|
-   */
-  i2c.start();
-  data[0] = reg_addr;
-  i2c.write(addr8bit, data, 1);
-  for (uint32_t i = 0; i < len; i++)
-  {
-    data[i] = reg_data[i];
-    i2c.write(addr8bit, &data[i], 1);
-  }
-  i2c.stop();
-
-  return rslt;
-}
 
 /* SPI read and write functions */
 int8_t user_spi_read(uint8_t reg_addr, uint8_t *reg_data, uint32_t len, void *intf_ptr)
@@ -289,33 +204,6 @@ int8_t user_spi_write(uint8_t reg_addr, const uint8_t *reg_data, uint32_t len, v
   return rslt;
 }
 
-/* find max difference among values in array -> deprecated later! */
-float find_max_diff(float arr[])
-{
-  // find the max diff of given arr
-  // O(n^2) -> not good!
-  float max_diff = 0.0;
-  if (arr[1] - arr[0] >= 0)
-    max_diff = arr[1] - arr[0];
-  else
-    max_diff = arr[0] - arr[1];
-
-  for (int i = 0; i < 20; i++)
-  {
-    for (int j = i + 1; j < 20; j++)
-    {
-      float diff = 0.0;
-      if (arr[j] - arr[i] >= 0)
-        diff = arr[j] - arr[i];
-      else
-        diff = arr[i] - arr[j];
-
-      if (diff > max_diff)
-        max_diff = diff;
-    }
-  }
-  return max_diff;
-}
 
 /* timer and alert trigger */
 // Note:  this timer constantly runs in the background
@@ -329,7 +217,7 @@ void time_ticking()
     printf("stop breathing for 10s! \n");
     counter = 0;
     start = false;
-    // alert = true;
+    alert = true;
   }
 }
 
@@ -361,17 +249,6 @@ float initialize(float data[])
   return avg;
 }
 
-/* determine whether the value is increasing */
-bool on_increase(float data[])
-{
-  int j; // the index of the previous sample
-  if (i > 0)
-    j = i - 1;
-  else
-    j = 20 - 1;
-  delta = data[i] - data[j];  // delta: current - previous
-  return (data[i] > data[j]); // if (current > previous) equals true, means increasing
-}
 
 /* determine whether the value is decreasing */
 bool on_decrease(float data[]){
@@ -385,41 +262,9 @@ bool on_decrease(float data[]){
     curr = data[i];
     prev = data[-1];
   }
-  return curr < prev;
+  return curr <= prev; 
 }
 
-/* 1- find the exhalation, if there is an exhalation then reset the timer */
-void breath_detection()
-{
-  /* fluctuation method -> not work, deprecated!
-  // float fluctuation = find_max_diff(buffer);
-  // if (fluctuation <= 5.0)
-  //   counter++;
-  // else
-  //   counter = 0;
-
-  // if (counter >= 20)
-  // {
-  //   // alert = true;
-  //   counter = 0;
-  // }
-  */
-
-  if (on_increase(sample)) // when increasing
-  {
-    increase += delta; // calculate the summation of delta
-    if (increase >= 2.5)
-    {
-      // when the total increase comes to THRESHOLD, means the person is exhaling
-      printf("-> exhaling...");
-      counter = 0; // recount from 0 because the person is breathing at this moment
-    }
-  }
-  else
-    increase = 0.0; // reset because it is decreasing
-
-  printf("\n");
-}
 
 /* 2- find the non-breathing period, if so, count the timer unitl 10 sec to trigger alert */
 void no_breath_detection(float avg)
@@ -453,9 +298,6 @@ void print_sensor_data(struct bme280_data *comp_data)
 #endif
 }
 
-/* GUI */
-// put your code here...
-
 /* stream the data read from sensor */
 int8_t stream_sensor_data_normal_mode(struct bme280_dev *dev)
 {
@@ -478,23 +320,18 @@ int8_t stream_sensor_data_normal_mode(struct bme280_dev *dev)
   rslt = bme280_set_sensor_settings(settings_sel, dev);
   rslt = bme280_set_sensor_mode(BME280_NORMAL_MODE, dev);
 
-  // printf("Temperature, Pressure, Humidity\r\n");
 
   /* the measurement cycle in normal mode */
-  // put the data processing and detection algorithm functions in this loop
   while (start && !alert)
   {
     /* Delay while the sensor completes a measurement */
     dev->delay_us(500'000, dev->intf_ptr); // measurement rate 0.5 sec
 
-    rslt = bme280_get_sensor_data(BME280_ALL, &comp_data, dev);
-    // print_sensor_data(&comp_data);
+    rslt = bme280_get_sensor_data(BME280_ALL, &comp_data, dev);;
 
     curr_temp = (float)comp_data.temperature;
     curr_humid = (float)comp_data.humidity;
     curr_pres = (float)comp_data.pressure;
-    // printf("time: %i |  humidity: %i  | temperature: %i  | pressure: %i ", counter, (int)curr_humid, (int)curr_temp, (int)curr_pres);
-    // printf("time: %i |  humidity: %0.2f  | temperature: %0.2f  | pressure: %0.2f ", counter, curr_humid, curr_temp, curr_pres);
 
     humidity_collect(curr_humid);
     icount++;
@@ -510,7 +347,6 @@ int8_t stream_sensor_data_normal_mode(struct bme280_dev *dev)
       
     else{
       printf("time: %i |  humidity: %i  | temperature: %i  | pressure: %i ", counter, (int)curr_humid, (int)curr_temp, (int)curr_pres);
-      updateValue((int)curr_temp, (int)curr_humid, (int)curr_pres);
       displayValue((int)curr_temp, (int)curr_humid, (int)curr_pres, false, false);
       no_breath_detection(IV);
       time_ticking();
@@ -535,12 +371,8 @@ void bme280_dev_setup(struct bme280_dev *dev)
 
 int main()
 {
-
-  // put your setup code here, to run once:
   struct bme280_dev dev;
-
   bme280_dev_setup(&dev);
-
   int initial = 0;
 
   if (bme280_init(&dev) == BME280_OK)
@@ -554,10 +386,6 @@ int main()
   /* the outer loop is for system state cycle */
   while (1)
   {
-    /* 0- initialize */
-    // run once, use normal mode to collect samples and find init_val
-    // if(init_val==0)
-    //   init_val = ...;
 
     /* 1- running */
     stream_sensor_data_normal_mode(&dev);
@@ -568,12 +396,7 @@ int main()
     {
       printf("* end of a cycle * \n");
       displayValue((int)curr_temp, (int)curr_humid, (int)curr_pres, true, false);
-
-      // Note: auto-restart for testing purpose
-      printf("restart...\n");
-      thread_sleep_for(3000);
-      start = true;
-      alert = false;
+      break;
     }
   }
 }
