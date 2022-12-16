@@ -188,10 +188,10 @@ The highlighted messages are the increasing period.
 
 From Scenario 1 and Scenario 3, we found that when the person is not breathing. The humidity either remains the same as initial value or constantly decreases. That is, we can use this as a start condition of 10 seconds counting.
 
-1.	When power on, the system runs <strong>5 seconds </strong> to sample the <strong>initial value (IV) </strong>  and store the value in a variable.
-2.	The humidity fluctuates in the range between <strong> IV-2</strong> and <strong>IV+2 </strong> . When the fluctuation is in the range, we consider this as no    breathing, so the timer starts to count (or keeps counting).
+1.	When power on, the system runs <strong>10 seconds </strong> to sample the <strong>initial value (IV) </strong>  and store the value in a variable.
+2.	The humidity fluctuates in the range between <strong> IV-3</strong> and <strong>IV+3 </strong> . When the fluctuation is in the range, we consider this as no    breathing, so the timer starts to count (or keeps counting).
 3.	When the value falls out of the range, we stop and reset the timer.
-4.	Another counting condition is <strong> when the value goes down </strong>(or fluctuates between -1 and +1), the timer starts to count.
+4.	Another counting condition is <strong> when the value keeps going down </strong>, the timer starts to count.
 5.	Until the timer reaches 10 sec, it triggers an alert.
 
 
