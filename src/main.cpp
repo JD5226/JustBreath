@@ -1,6 +1,6 @@
 /**
  * @file main.cpp
- * @author Roberto Hong (zh2441), Eugene Lan (yl8241), Dennis Li (xl4141), Jiaxin Dong (jd5226)
+ * @author Roberto Hong (zh2441), Eugene Lan (yl8241), Xiongbai (Dennis) Li (xl4141), Jiaxin Dong (jd5226)
  * @brief Embedded Challenge Fall 2022 Team Project: Just Breathe
  * @version 0.1
  * @date 2022-12-15
